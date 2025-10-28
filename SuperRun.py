@@ -39,9 +39,8 @@ SPEED_ACCEL = 0.05            # 時間がたつと速くなる係数（どんど
 # ゲームオーバー後に自動終了するまでの待ち時間（ミリ秒）
 GAMEOVER_EXIT_DELAY_MS = 5000
 
-#ランダムイベントのリスト
+#ランダムイベント関連
 EVENT_LST = ["speed_up", "speed_down"]
-
 
 def draw_text(surface: pg.Surface,
               text: str,
@@ -212,18 +211,19 @@ class Score:
 
 
 class Event:
-    def __init__(self):
-        self.select_num = random.randint(0, len(EVENT_LST)-1)
-        
-    def start(self, event_name: str):
-        if event_name == "speed_up":
-            speed_accelaration = 2
-            return speed_accelaration
-        else:
-            pass
+    def __init__(self, font: pg.font.Font):
+        self.font = font
+        self.color = TEXT_COLOR
+        self.pos = (WIDTH//2, 20)
+        self.message = ""
+        self.event_timer = 0
     
-    def speed_update(self, speed_accelaration: int, world_speed: float):
-        world_speed *= speed_accelaration
+    def set(self, msg: str):
+        self.message = msg
+    
+    def draw(self, screen: pg.Surface):
+        txt = self.font.render(f"{self.message}", True, self.color)
+        screen.blit(txt, self.pos)
 
 
 def main():
@@ -258,7 +258,8 @@ def main():
     floor_scroll_x = 0.0                 # 床タイルのスクロール用オフセット
     start_ticks = pg.time.get_ticks()    # 開始時刻(ms)
     score_obj = Score(font_small)
-    random_event = Event()
+    event_msg = Event(font_big)
+    event_speed_add = 1.0
 
     game_active = True
     death_time = None  # ゲームオーバーになった瞬間の時刻(ms)
@@ -266,6 +267,10 @@ def main():
     # 障害物を一定間隔で出すためのイベントタイマー
     SPAWN_EVENT = pg.USEREVENT + 1
     pg.time.set_timer(SPAWN_EVENT, SPAWN_INTERVAL_MS)
+
+    # イベントを一定間隔で発生させるためのタイマー
+    MY_EVENT_ID = pg.USEREVENT + 1
+    pg.time.set_timer(MY_EVENT_ID, 10000)
 
     tmr = 0  # フレームカウンタ（必要なら使える）
 
@@ -291,14 +296,28 @@ def main():
             # 障害物スポーン（ゲーム中のみ）
             if event.type == SPAWN_EVENT and game_active:
                 obstacles.add(Obstacle(raw_obst, world_speed))
+            
+            if event.type == MY_EVENT_ID:
+                # ここにイベント発生時の処理を書く
+                event_msg.set(EVENT_LST[random.randint(0, len(EVENT_LST)-1)])
+                # 例: キャラクターを動かす、スコアを増やすなど
+                
+
 
         # ===== ロジック更新 =====
         if game_active:
             # プレイ経過時間(秒)
             elapsed_sec = (pg.time.get_ticks() - start_ticks) / 1000.0
+            event_speed_add = 1.0
+            if EVENT_LST[random.randint(0, len(EVENT_LST)-1)] == "speed_up":
+                event_speed_add = 5.0
+                print(f"加速{world_speed}")
+            elif EVENT_LST[random.randint(0, len(EVENT_LST)-1)] == "speed_down":
+                event_speed_add = 0.5
+                print(f"減速{world_speed}")
 
             # スクロール速度をじわじわ上げる
-            world_speed = SPEED_START + SPEED_ACCEL * elapsed_sec
+            world_speed = (SPEED_START + SPEED_ACCEL * elapsed_sec)*event_speed_add
 
             # 床タイルのスクロール更新（左に流す）
             floor_scroll_x -= world_speed
@@ -345,14 +364,8 @@ def main():
         # スコア
         score_obj.draw(screen)
 
-        # ランダムイベント
-        if elapsed_sec <= 10:
-            event_lst = EVENT_LST
-            select_num = random.randint(0, len(event_lst)-1)
-            event_name = event_lst[select_num]
-            random_event.speed_update(random_event.start(event_name),world_speed)
-        
-            
+        # イベントメッセージ
+        event_msg.draw(screen)
 
         # ゲームオーバー表示
         if not game_active:
