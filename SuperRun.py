@@ -238,12 +238,35 @@ class Life:
         screen.blit(img, self.pos)
 
 
+class LifeBonus(pg.sprite.Sprite):
+    """
+    残機を1つ増やすボーナスアイテム
+    """
+    def __init__(self, x, y, speed):
+        super().__init__()
+        font = pg.font.SysFont("Meiryo", 48, bold=True)
+
+        # 🍄を透明背景で描画
+        self.image = font.render("🍄", True, (0, 200, 0), None).convert_alpha()
+
+        self.rect = self.image.get_rect(midbottom=(x, GROUND_Y))
+        self.speed = speed
+
+    def update(self):
+        self.rect.x -= self.speed
+        if self.rect.right < 0:
+            self.kill()
+
 
 def main():
     pg.init()
     pg.display.set_caption("CAR RUN (マリオ床ver)")
     screen = pg.display.set_mode((WIDTH, HEIGHT))
     clock = pg.time.Clock()
+    bonus_group = pg.sprite.Group()
+    BONUS_EVENT = pg.USEREVENT + 2
+    pg.time.set_timer(BONUS_EVENT, 1000)  # 1秒ごとにチェック
+
 
     # ===== フォントの用意 =====
     # □□になる場合は "Yu Gothic UI" や "MS Gothic" など他の日本語フォント名に変えてOK
@@ -305,6 +328,12 @@ def main():
             if event.type == SPAWN_EVENT and game_active:
                 obstacles.add(Obstacle(raw_obst, world_speed))
 
+            # 一定確率でボーナス出現
+            if event.type == BONUS_EVENT and game_active:
+                if random.random() < 0.2:  # 20%の確率で出現
+                    bonus = LifeBonus(WIDTH + random.randint(0, 200), GROUND_Y, world_speed)
+                    bonus_group.add(bonus)
+
         # ===== ロジック更新 =====
         if game_active:
             # プレイ経過時間(秒)
@@ -323,6 +352,9 @@ def main():
 
             # 障害物の更新（左に流れる）
             obstacles.update(world_speed)
+            
+            # ボーナスが流れる
+            bonus_group.update()
 
             # 当たり判定：車 vs 障害物
             for obs in obstacles:
@@ -334,8 +366,10 @@ def main():
                         death_time = pg.time.get_ticks()
                     break  
 
-
-
+            # ボーナス取得判定
+            bonus_group.update()
+            if pg.sprite.spritecollide(car, bonus_group, True):
+                life_obj.life += 1
 
             # スコア更新（1/100秒単位くらい）
             score_val = int((pg.time.get_ticks() - start_ticks) / 10)
@@ -355,6 +389,9 @@ def main():
         # マリオっぽい床ブロック
         draw_floor_tiles(screen, floor_scroll_x)
 
+        # ボーナス
+        bonus_group.draw(screen)
+
         # プレイヤー車
         car.draw(screen)
 
@@ -367,7 +404,6 @@ def main():
 
         # 残機
         life_obj.draw(screen)
-
 
         # ゲームオーバー表示
         if not game_active:
