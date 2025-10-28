@@ -251,15 +251,15 @@ class Score:
     """
     スコア表示
     """
-    def __init__(self, font: pg.font.Font):            
+    def __init__(self, font: pg.font.Font, car: Car, car_img: pg.Surface):            
         self.font = font
         self.value = 0
         self.multiplier = 1.0
         self.color = TEXT_COLOR
         self.pos = (20, 20)
         self.friends = []  # 仲間キャラクターを管理するリスト
-        self.car = Car
-
+        self.car = car
+        self.car_img = car_img  # 車画像も保持
 
     def set(self, v: int):
         self.value = v
@@ -277,30 +277,38 @@ class Score:
             self.add(100)
         elif kind == "life_up":
             self.add(200)
+    def update_friends(self, key_lst):
+        for friend in self.friends:
+            friend.update(key_lst)
+
+    def draw_friends(self, screen):
+        for friend in self.friends:
+            friend.draw(screen)
     def check_for_friends(self):
         """スコアが一定を超えたら仲間を追加"""
         if self.value >= 2000 and len(self.friends) == 0:  # 2000点以上で仲間追加
             print("新しい仲間が登場！")
-            new_friend = FriendCar(car_img, car.rect.left - 100, GROUND_Y)
+            new_friend = FriendCar(self.car_img, self.car.rect.left - 100, GROUND_Y,self.car)
             self.friends.append(new_friend)
         if self.value >= 5000 and len(self.friends) == 1:  # 5000点以上で次の仲間追加
             print("2人目の仲間が登場！")
-            new_friend2 = FriendCar(car_img, car.rect.left - 200, GROUND_Y)
+            new_friend2 = FriendCar(self.car_img, self.car.rect.left - 200, GROUND_Y,self.car)
             self.friends.append(new_friend2) 
 
 class FriendCar(Car):
     """
     仲間の車（プレイヤーの後ろに追従する車）
     """
-    def __init__(self, car_img: pg.Surface, spawn_x: int, spawn_y: int):
+    def __init__(self, car_img: pg.Surface, spawn_x: int, spawn_y: int, target_car:Car):
         super().__init__(car_img)  # 親クラスのCarを初期化
         self.rect.left = spawn_x    # プレイヤーの後ろに配置
         self.rect.bottom = spawn_y
+        self.target_car = target_car  # 追従対象を保持
 
     def update(self, key_lst: list[bool]):
         super().update(key_lst)  # 親クラスのupdateを呼び出してジャンプ・重力を適用
         # 友達の車はプレイヤーを追いかける動きにする
-        self.rect.x = car.rect.left - 100  # プレイヤーの後ろに追従
+        self.rect.x = self.target_car.rect.left - 100  # プレイヤーの後ろに追従
 
 
 def get_support_y(car_rect: pg.Rect, obstacles: pg.sprite.Group) -> int:
@@ -381,7 +389,7 @@ def main():
     floor_scroll_x = 0.0                 # 床タイルのスクロール用オフセット
     bg_scroll_x = 0.0                    # 背景スクロール用オフセット
     start_ticks = pg.time.get_ticks()    # 開始時刻(ms)
-    score_obj = Score(font_small)
+    score_obj = Score(font_small, car,car_img)
 
     game_active = True
     death_time = None  # ゲームオーバーになった瞬間の時刻(ms)
@@ -442,6 +450,7 @@ def main():
             for obs in obstacles:
                 if car.rect.colliderect(obs.rect):
 
+<<<<<<< HEAD
                     # 「上から踏んだ」とみなす条件:
                     landed_from_above = (
                         car.vel_y >= 0 and
@@ -479,8 +488,22 @@ def main():
             time_score = int((pg.time.get_ticks() - start_ticks) / 10)
             if score_obj.value < time_score:
                 score_obj.set(time_score)
+=======
+            # スコア更新（1/100秒単位くらい）
+            score_val = int((pg.time.get_ticks() - start_ticks) / 10)
+            score_obj.set(score_val)
+        
+            # 車の更新のあと、仲間キャラクターも更新
+            score_obj.update_friends(key_lst)
+>>>>>>> e319738 (score途中経過)
 
-            score_obj = Score(font_small, car)      
+            # 描画時
+            score_obj.draw_friends(screen)
+
+
+
+             # 仲間キャラクターの追加チェック
+            score_obj.check_for_friends()   # ← 毎フレーム呼ぶだけ      
 
         else:
             # ゲームオーバー後：5秒経ったら自動終了
