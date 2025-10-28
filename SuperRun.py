@@ -39,6 +39,9 @@ SPEED_ACCEL = 0.05            # 時間がたつと速くなる係数（どんど
 # ゲームオーバー後に自動終了するまでの待ち時間（ミリ秒）
 GAMEOVER_EXIT_DELAY_MS = 5000
 
+#ランダムイベントのリスト
+EVENT_LST = ["speed_up", "speed_down"]
+
 
 def draw_text(surface: pg.Surface,
               text: str,
@@ -210,13 +213,17 @@ class Score:
 
 class Event:
     def __init__(self):
-        self.event_lst = ["speed_up", "speed_down"]
+        self.select_num = random.randint(0, len(EVENT_LST)-1)
+        
+    def start(self, event_name: str):
+        if event_name == "speed_up":
+            speed_accelaration = 2
+            return speed_accelaration
+        else:
+            pass
     
-    def start(self, time: int):
-        if time % 300 == 0:
-            select_num = random.randint(0, len(self.event_lst)-1)
-            random_event = self.event_lst[select_num]
-            return random_event
+    def speed_update(self, speed_accelaration: int, world_speed: float):
+        world_speed *= speed_accelaration
 
 
 def main():
@@ -304,11 +311,6 @@ def main():
             # 障害物の更新（左に流れる）
             obstacles.update(world_speed)
 
-            # ランダムイベント
-            event_name = random_event.start(int(elapsed_sec))
-            if event_name == "speed_up":
-                world_speed = world_speed * 10
-
             # 当たり判定：車 vs 障害物
             for obs in obstacles:
                 if car.rect.colliderect(obs.rect):
@@ -342,6 +344,15 @@ def main():
 
         # スコア
         score_obj.draw(screen)
+
+        # ランダムイベント
+        if elapsed_sec <= 10:
+            event_lst = EVENT_LST
+            select_num = random.randint(0, len(event_lst)-1)
+            event_name = event_lst[select_num]
+            random_event.speed_update(random_event.start(event_name),world_speed)
+        
+            
 
         # ゲームオーバー表示
         if not game_active:
