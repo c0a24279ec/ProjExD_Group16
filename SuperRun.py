@@ -519,6 +519,8 @@ def main():
         # プレイヤー車
         car.draw(screen)
 
+        score_obj.draw_friends(screen)
+
         # 障害物
         for obs in obstacles:
             obs.draw(screen)
