@@ -172,7 +172,7 @@ class Car(pg.sprite.Sprite):
         surface.blit(self.image, self.rect)
 
 
-# ★ 追加：足場タイプの横のび倍率
+# 足場タイプの横のび倍率
 PLATFORM_STRETCH_X = 2.0  # 2.0なら横2倍。好きな幅に調整してOK
 
 
@@ -286,7 +286,7 @@ class Score:
             friend.draw(screen)
     def check_for_friends(self):
         """スコアが一定を超えたら仲間を追加"""
-        if self.value >= 2000 and len(self.friends) == 0:  # 2000点以上で仲間追加
+        if self.value >= 1000 and len(self.friends) == 0:  # 2000点以上で仲間追加
             print("新しい仲間が登場！")
             new_friend = FriendCar(self.car_img, self.car.rect.left - 100, GROUND_Y,self.car)
             self.friends.append(new_friend)
