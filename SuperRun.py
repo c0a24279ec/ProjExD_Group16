@@ -351,7 +351,7 @@ def main():
     raw_obst1 = pg.image.load("fig/4.png").convert_alpha()     # stompで消えるタイプ
     raw_obst2 = pg.image.load("fig/5.png").convert_alpha()     # stompで消えるタイプ
     raw_obst3 = pg.image.load("fig/bush2.png").convert_alpha() # 足場タイプ
-    # ↑ bush2 が .jpg なら拡張子を .jpg に変えること！
+    
 
     obstacle_image_list = [raw_obst1, raw_obst2, raw_obst3]
 
