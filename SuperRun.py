@@ -208,6 +208,17 @@ class Score:
         screen.blit(img, self.pos)
 
 
+class Event:
+    def __init__(self):
+        self.event_lst = ["speed_up", "speed_down"]
+    
+    def start(self, time: int):
+        if time % 300 == 0:
+            select_num = random.randint(0, len(self.event_lst)-1)
+            random_event = self.event_lst[select_num]
+            return random_event
+
+
 def main():
     pg.init()
     pg.display.set_caption("CAR RUN (マリオ床ver)")
@@ -240,6 +251,7 @@ def main():
     floor_scroll_x = 0.0                 # 床タイルのスクロール用オフセット
     start_ticks = pg.time.get_ticks()    # 開始時刻(ms)
     score_obj = Score(font_small)
+    random_event = Event()
 
     game_active = True
     death_time = None  # ゲームオーバーになった瞬間の時刻(ms)
@@ -291,6 +303,11 @@ def main():
 
             # 障害物の更新（左に流れる）
             obstacles.update(world_speed)
+
+            # ランダムイベント
+            event_name = random_event.start(int(elapsed_sec))
+            if event_name == "speed_up":
+                world_speed = world_speed * 10
 
             # 当たり判定：車 vs 障害物
             for obs in obstacles:
