@@ -251,11 +251,15 @@ class Score:
     """
     スコア表示
     """
-    def __init__(self, font: pg.font.Font):
+    def __init__(self, font: pg.font.Font):            
         self.font = font
         self.value = 0
+        self.multiplier = 1.0
         self.color = TEXT_COLOR
         self.pos = (20, 20)
+        self.friends = []  # 仲間キャラクターを管理するリスト
+        self.car = Car
+
 
     def set(self, v: int):
         self.value = v
@@ -266,6 +270,37 @@ class Score:
     def draw(self, screen: pg.Surface):
         img = self.font.render(f"SCORE: {self.value}", True, self.color)
         screen.blit(img, self.pos)
+    def add(self, points):
+        self.value += int(points * self.multiplier)
+    def bonus(self, kind):
+        if kind == "obstacle_break":
+            self.add(100)
+        elif kind == "life_up":
+            self.add(200)
+    def check_for_friends(self):
+        """スコアが一定を超えたら仲間を追加"""
+        if self.value >= 2000 and len(self.friends) == 0:  # 2000点以上で仲間追加
+            print("新しい仲間が登場！")
+            new_friend = FriendCar(car_img, car.rect.left - 100, GROUND_Y)
+            self.friends.append(new_friend)
+        if self.value >= 5000 and len(self.friends) == 1:  # 5000点以上で次の仲間追加
+            print("2人目の仲間が登場！")
+            new_friend2 = FriendCar(car_img, car.rect.left - 200, GROUND_Y)
+            self.friends.append(new_friend2) 
+
+class FriendCar(Car):
+    """
+    仲間の車（プレイヤーの後ろに追従する車）
+    """
+    def __init__(self, car_img: pg.Surface, spawn_x: int, spawn_y: int):
+        super().__init__(car_img)  # 親クラスのCarを初期化
+        self.rect.left = spawn_x    # プレイヤーの後ろに配置
+        self.rect.bottom = spawn_y
+
+    def update(self, key_lst: list[bool]):
+        super().update(key_lst)  # 親クラスのupdateを呼び出してジャンプ・重力を適用
+        # 友達の車はプレイヤーを追いかける動きにする
+        self.rect.x = car.rect.left - 100  # プレイヤーの後ろに追従
 
 
 def get_support_y(car_rect: pg.Rect, obstacles: pg.sprite.Group) -> int:
@@ -445,6 +480,8 @@ def main():
             if score_obj.value < time_score:
                 score_obj.set(time_score)
 
+            score_obj = Score(font_small, car)      
+
         else:
             # ゲームオーバー後：5秒経ったら自動終了
             if death_time is not None:
@@ -481,6 +518,7 @@ def main():
                           font_small,
                           WIDTH // 2 - 90,
                           HEIGHT // 2 - 50)
+        
 
             draw_text(screen,
                       "5秒後に終了します",
