@@ -23,6 +23,18 @@ TEXT_COLOR = (10, 10, 10)
 BLOCK_MAIN = (180, 120, 40)   # ブロックの茶色い面
 BLOCK_EDGE = (110, 70, 20)    # ブロックのふち色（こげ茶）
 
+BLOCK_COLORS = [
+    (180, 120, 40),  # 1. 元の茶色
+    (60, 160, 60),   # 2. 緑色
+    (150, 50, 50),   # 3. 赤色
+    (100, 100, 150), # 4. 青紫色
+]
+
+# 現在の色を管理する変数（プログラム全体で共有）
+current_block_main_color = BLOCK_COLORS[0]
+current_block_edge_color = (110, 70, 20)
+current_color_index = 0
+
 # 物理系
 GRAVITY = 1.0         # 重力(下向き加速度)
 JUMP_VELOCITY = -22   # ジャンプ初速（マイナスで上方向）
@@ -94,6 +106,18 @@ def draw_floor_tiles(surface: pg.Surface, scroll_x: float):
             rect = pg.Rect(x, y, tile, tile)
             pg.draw.rect(surface, BLOCK_MAIN, rect, border_radius=4)
             pg.draw.rect(surface, BLOCK_EDGE, rect, width=3, border_radius=4)
+
+            highlight_rect = pg.Rect(x+4, y+4, tile-8, tile-24)
+            pg.draw.rect(surface, (220, 180, 80), highlight_rect, border_radius=4)
+
+    for y in range(GROUND_Y, HEIGHT, tile):
+        for x in range(start_x, WIDTH + tile, tile):
+            rect = pg.Rect(x, y, tile, tile)
+            
+            global current_block_main_color, current_block_edge_color
+            
+            pg.draw.rect(surface, current_block_main_color, rect, border_radius=4)
+            pg.draw.rect(surface, current_block_edge_color, rect, width=3, border_radius=4)
 
             highlight_rect = pg.Rect(x+4, y+4, tile-8, tile-24)
             pg.draw.rect(surface, (220, 180, 80), highlight_rect, border_radius=4)
@@ -391,6 +415,15 @@ def main():
                 if event.key == pg.K_ESCAPE:
                     pg.quit()
                     sys.exit()
+
+                if event.key == pg.K_m:
+                    global current_color_index, current_block_main_color
+                
+                    # インデックスを更新
+                    current_color_index = (current_color_index + 1) % len(BLOCK_COLORS)
+                
+                    # 現在の色を新しい色に更新
+                    current_block_main_color = BLOCK_COLORS[current_color_index]
 
             if event.type == SPAWN_EVENT and game_active:
                 obstacles.add(Obstacle(obstacle_image_list, world_speed))
