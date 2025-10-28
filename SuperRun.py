@@ -450,7 +450,6 @@ def main():
             for obs in obstacles:
                 if car.rect.colliderect(obs.rect):
 
-<<<<<<< HEAD
                     # 「上から踏んだ」とみなす条件:
                     landed_from_above = (
                         car.vel_y >= 0 and
@@ -488,14 +487,12 @@ def main():
             time_score = int((pg.time.get_ticks() - start_ticks) / 10)
             if score_obj.value < time_score:
                 score_obj.set(time_score)
-=======
             # スコア更新（1/100秒単位くらい）
             score_val = int((pg.time.get_ticks() - start_ticks) / 10)
             score_obj.set(score_val)
         
             # 車の更新のあと、仲間キャラクターも更新
             score_obj.update_friends(key_lst)
->>>>>>> e319738 (score途中経過)
 
             # 描画時
             score_obj.draw_friends(screen)
