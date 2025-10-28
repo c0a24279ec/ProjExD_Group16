@@ -230,7 +230,7 @@ def main():
     raw_car = pg.image.load("fig/3.png").convert_alpha()
     car_img = pg.transform.smoothscale(raw_car, (CAR_W, CAR_H))
 
-    raw_obst = pg.image.load("fig/4.png").convert_alpha()
+    raw_obst = pg.image.load("fig/20251028_055746142_iOS.jpg").convert_alpha()
 
     # ===== ゲーム状態の初期化 =====
     car = Car(car_img)
