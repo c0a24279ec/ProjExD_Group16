@@ -24,7 +24,7 @@ BLOCK_MAIN = (180, 120, 40)   # ブロックの茶色い面
 BLOCK_EDGE = (110, 70, 20)    # ブロックのふち色（こげ茶）
 
 # 物理系
-GRAVITY = 1.0         # 重力(下向き加速度)
+GRAVITY = 1.0      # 重力(下向き加速度)
 JUMP_VELOCITY = -22   # ジャンプ初速（マイナスで上方向）
 
 # プレイヤーのサイズ
@@ -39,6 +39,8 @@ SPEED_ACCEL = 0.05            # 時間がたつと速くなる係数（どんど
 # ゲームオーバー後に自動終了するまでの待ち時間（ミリ秒）
 GAMEOVER_EXIT_DELAY_MS = 5000
 
+# 残機の初期値
+LIFE_INIT = 3  
 
 def draw_text(surface: pg.Surface,
               text: str,
@@ -208,6 +210,35 @@ class Score:
         screen.blit(img, self.pos)
 
 
+class Life:
+    """
+    残機表示
+    """
+    def __init__(self, font: pg.font.Font, init_life: int = LIFE_INIT):
+        self.font = font
+        self.life = init_life
+        self.pos = (20, 60)
+
+    def decrease(self):
+        """
+        1減らす
+        """
+        if self.life > 0:
+            self.life -= 1
+
+    def is_dead(self) -> bool:
+        """
+        残機0かどうか
+        """
+        return self.life <= 0
+
+    def draw(self, screen: pg.Surface):
+        heart = "♥" * self.life if self.life > 0 else ""
+        img = self.font.render(f"LIFE: {heart}", True, (200, 30, 30))
+        screen.blit(img, self.pos)
+
+
+
 def main():
     pg.init()
     pg.display.set_caption("CAR RUN (マリオ床ver)")
@@ -240,6 +271,7 @@ def main():
     floor_scroll_x = 0.0                 # 床タイルのスクロール用オフセット
     start_ticks = pg.time.get_ticks()    # 開始時刻(ms)
     score_obj = Score(font_small)
+    life_obj = Life(font_small, LIFE_INIT)
 
     game_active = True
     death_time = None  # ゲームオーバーになった瞬間の時刻(ms)
@@ -295,8 +327,15 @@ def main():
             # 当たり判定：車 vs 障害物
             for obs in obstacles:
                 if car.rect.colliderect(obs.rect):
-                    game_active = False
-                    death_time = pg.time.get_ticks()
+                    life_obj.decrease()
+                    obs.kill() 
+                    if life_obj.is_dead():
+                        game_active = False
+                        death_time = pg.time.get_ticks()
+                    break  
+
+
+
 
             # スコア更新（1/100秒単位くらい）
             score_val = int((pg.time.get_ticks() - start_ticks) / 10)
@@ -325,6 +364,10 @@ def main():
 
         # スコア
         score_obj.draw(screen)
+
+        # 残機
+        life_obj.draw(screen)
+
 
         # ゲームオーバー表示
         if not game_active:
