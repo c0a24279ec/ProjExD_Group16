@@ -43,7 +43,7 @@ STOMP_SCORE = 100             # 踏みつぶし時に入るスコア
 # ゲームオーバー後に自動終了するまでの待ち時間（ミリ秒）
 GAMEOVER_EXIT_DELAY_MS = 5000
 
-#ランダムイベント関連
+# ランダムイベントのリスト
 EVENT_LST = ["speed_up", "speed_down"]
 
 def draw_text(surface: pg.Surface,
@@ -281,6 +281,48 @@ def get_support_y(car_rect: pg.Rect, obstacles: pg.sprite.Group) -> int:
 
     return support_y
 
+class Event:
+    def __init__(self, font: pg.font.Font):
+        self.addspeed = 1.0
+        self.active = False
+        self.start_time = 0
+        self.end_time = 0
+        self.font = font
+        self.value = ""
+        self.color = TEXT_COLOR
+        self.pos = (WIDTH//2, 20)
+
+    def set(self, event_name: str):
+        self.value = event_name
+
+    def draw(self, screen: pg.Surface):
+        img = self.font.render(f"EVENT: {self.value}", True, self.color)
+        screen.blit(img, self.pos)
+
+    def select(self, event_lst: list):
+        e = event_lst[random.randint(0, len(event_lst)-1)]
+        return e
+    
+    def start(self, event_name: str):
+        if event_name == "speed_up":
+            self.addspeed = 1.5
+            self.end_time = 10000
+        elif event_name == "speed_down":
+            self.addspeed = 0.8
+            self.end_time = 10000
+        else:
+            self.addspeed = 1.0
+            self.end_time = 0
+        
+        self.start_time = pg.time.get_ticks()
+        self.active = True
+        
+    def update(self):
+        # 一定時間経過したらリセット
+        if self.active and pg.time.get_ticks() - self.start_time > self.end_time:
+            self.addspeed = 1.0
+            self.value = ""
+            self.active = False
 
 def main():
     pg.init()
@@ -366,6 +408,7 @@ def main():
     bg_scroll_x = 0.0
     start_ticks = pg.time.get_ticks()
     score_obj = Score(font_small)
+    random_event = Event(font_small)
 
     game_active = True
     death_time = None  # ゲームオーバーになった瞬間(ms)
@@ -373,6 +416,10 @@ def main():
     # 一定間隔で敵を出すイベント
     SPAWN_EVENT = pg.USEREVENT + 1
     pg.time.set_timer(SPAWN_EVENT, SPAWN_INTERVAL_MS)
+
+    # ランダムで発生するイベントのタイマー
+    RANDOM_EVENT = pg.USEREVENT + 2
+    pg.time.set_timer(RANDOM_EVENT, 40000)
 
     tmr = 0  # デバッグ用カウンタ（今は未使用）
 
@@ -397,19 +444,20 @@ def main():
             if event.type == SPAWN_EVENT and game_active:
                 obstacles.add(Obstacle(obstacle_image_list, world_speed))
 
+            # ランダムイベント
+            if event.type == RANDOM_EVENT and game_active:
+                event_name = random_event.select(EVENT_LST)
+                random_event.set(event_name)
+                random_event.start(event_name)
+
         # --- ロジック更新 ---
         if game_active:
+            random_event.update()
+
             elapsed_sec = (pg.time.get_ticks() - start_ticks) / 1000.0
-            event_speed_add = 1.0
-            if EVENT_LST[random.randint(0, len(EVENT_LST)-1)] == "speed_up":
-                event_speed_add = 5.0
-                print(f"加速{world_speed}")
-            elif EVENT_LST[random.randint(0, len(EVENT_LST)-1)] == "speed_down":
-                event_speed_add = 0.5
-                print(f"減速{world_speed}")
 
             # スピードだんだん上がる
-            world_speed = SPEED_START + SPEED_ACCEL * elapsed_sec
+            world_speed = (SPEED_START + SPEED_ACCEL * elapsed_sec) * random_event.addspeed
 
             # 背景と床をスクロール
             bg_scroll_x     -= world_speed
@@ -495,6 +543,9 @@ def main():
             obs.draw(screen)
 
         score_obj.draw(screen)
+
+        #イベント
+        random_event.draw(screen)
 
         if not game_active:
             draw_text(screen, "GAME OVER", font_big,
