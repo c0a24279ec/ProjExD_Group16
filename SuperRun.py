@@ -738,7 +738,7 @@ def main():
 
     tmr = 0
     # ランダムで発生するイベントのタイマー
-    RANDOM_EVENT = pg.USEREVENT + 2
+    RANDOM_EVENT = pg.USEREVENT + 4
     pg.time.set_timer(RANDOM_EVENT, 40000)
 
     tmr = 0  # デバッグ用カウンタ（今は未使用）
