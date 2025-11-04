@@ -2,6 +2,7 @@ import os
 import sys
 import random
 import pygame as pg
+import math
 
 
 # =========================
@@ -45,6 +46,10 @@ GAMEOVER_EXIT_DELAY_MS = 5000
 
 # 残機の初期値
 LIFE_INIT = 3
+# アイテム関係
+STAR_DURATION_MS = 4000       # スター効果持続時間（ミリ秒）
+STAR_SPAWN_INTERVAL_MS = 8000 # スター出現間隔（ミリ秒）
+STAR_BLINK_INTERVAL = 5       # 点滅間隔（フレーム）
 
 
 def draw_text(surface: pg.Surface,
@@ -102,6 +107,35 @@ def draw_floor_tiles(surface: pg.Surface, scroll_x: float):
             pg.draw.rect(surface, (220, 180, 80), highlight_rect, border_radius=4)
 
 
+class Particle(pg.sprite.Sprite):
+    """
+    障害物破壊時のパーティクルエフェクト
+    """
+    def __init__(self, x, y, color, size):
+        super().__init__()
+        self.image = pg.Surface((size, size), pg.SRCALPHA)
+        pg.draw.rect(self.image, color, (0, 0, size, size))
+        self.rect = self.image.get_rect(center=(x, y))
+        self.velocity_x = random.uniform(-5, 5)
+        self.velocity_y = random.uniform(-10, -2)
+        self.gravity = 0.5
+        self.life = 30  # パーティクルの寿命（フレーム数）
+
+    def update(self):
+        self.velocity_y += self.gravity
+        self.rect.x += self.velocity_x
+        self.rect.y += self.velocity_y
+        self.life -= 1
+        
+        # 寿命が尽きたら消滅
+        if self.life <= 0:
+            self.kill()
+            
+        # 透明度を徐々に下げる
+        alpha = int(255 * (self.life / 30))
+        self.image.set_alpha(alpha)
+
+
 class Car(pg.sprite.Sprite):
     """
     プレイヤー（車）
@@ -123,6 +157,17 @@ class Car(pg.sprite.Sprite):
         self.vel_y = 0.0
         self.jump_held = False  # 押しっぱなし対策
 
+        # 無敵状態関連
+        self.is_invincible = False
+        self.invincible_start_time = 0
+        self.blink_counter = 0
+
+        # 今フレームの「足場の高さ」
+        # 最初は地面
+        self.floor_y = GROUND_Y
+
+        # 破壊モード関連
+        self.destroy_cooldown = 0  # 破壊クールダウン
         # このフレームでの足場の高さ
         self.floor_y = GROUND_Y
 
@@ -146,6 +191,14 @@ class Car(pg.sprite.Sprite):
         # 押しっぱなし管理
         self.jump_held = jump_pressed
 
+        # Shiftキーで障害物破壊（クールダウン中でない場合）
+        destroy_flag = False
+        if key_lst[pg.K_LSHIFT] and self.destroy_cooldown <= 0:
+            destroy_flag = True
+            self.destroy_cooldown = 10  # クールダウン設定（10フレーム）
+            
+        return destroy_flag
+
     def apply_physics(self):
         # 重力
         self.vel_y += GRAVITY
@@ -157,12 +210,50 @@ class Car(pg.sprite.Sprite):
             self.rect.bottom = self.floor_y
             self.vel_y = 0.0
 
+    def activate_invincible(self, current_time: int):
+        """
+        無敵状態を有効化
+        """
+        self.is_invincible = True
+        self.invincible_start_time = current_time
+        self.blink_counter = 0
+        
+    def update_invincible(self, current_time: int):
+        """
+        無敵状態の更新
+        """
+        if self.is_invincible:
+            elapsed = current_time - self.invincible_start_time
+            if elapsed >= STAR_DURATION_MS:
+                self.is_invincible = False
+            else:
+                self.blink_counter += 1
+                
+    def update_cooldown(self):
+        """
+        破壊クールダウンの更新
+        """
+        if self.destroy_cooldown > 0:
+            self.destroy_cooldown -= 1
+                
+    def should_draw(self) -> bool:
+        """
+        無敵状態での点滅制御
+        """
+        if not self.is_invincible:
+            return True
+        # 点滅効果（5フレームごとに表示/非表示）
+        return (self.blink_counter // STAR_BLINK_INTERVAL) % 2 == 0   
+
     def update(self, key_lst: list[bool]):
-        self.handle_input(key_lst)
+        destroy_flag = self.handle_input(key_lst)
         self.apply_physics()
+        self.update_cooldown()
+        return destroy_flag
 
     def draw(self, surface: pg.Surface):
-        surface.blit(self.image, self.rect)
+        if self.should_draw():  
+            surface.blit(self.image, self.rect)
 
 
 # 足場タイプの横のび倍率
@@ -213,9 +304,131 @@ class Obstacle(pg.sprite.Sprite):
         self.rect.bottom = GROUND_Y
 
         self.speed = world_speed
+        self.is_destroyed = False
+        self.destroy_timer = 0
 
     def update(self, world_speed: float):
+        # 破壊されていない場合のみ移動
+        if not self.is_destroyed:
+            # 左方向に進める
+            self.rect.x -= world_speed
+
+            # 画面外に出たら消す
+            if self.rect.right < 0:
+                self.kill()
+        else:
+            # 破壊された場合、タイマーを進める
+            self.destroy_timer += 1
+            if self.destroy_timer > 15:  # 15フレーム後に完全に消える
+                self.kill()
         # 左に動く
+        self.rect.x -= world_speed
+
+        # 画面外に出たら消す
+        if self.rect.right < 0:
+            self.kill()
+
+    def draw(self, surface: pg.Surface):
+        if not self.is_destroyed:
+            surface.blit(self.image, self.rect)
+        else:
+            # 破壊された場合、徐々に小さくする
+            scale_factor = max(0, 1 - self.destroy_timer / 15)
+            if scale_factor > 0:
+                scaled_w = int(self.rect.width * scale_factor)
+                scaled_h = int(self.rect.height * scale_factor)
+                if scaled_w > 0 and scaled_h > 0:
+                    scaled_img = pg.transform.scale(self.image, (scaled_w, scaled_h))
+                    surface.blit(scaled_img, (self.rect.centerx - scaled_w//2, 
+                                             self.rect.centery - scaled_h//2))
+
+    def is_stompable(self) -> bool:
+        return self.kind in (0, 1)
+
+    def is_platform(self) -> bool:
+        return self.kind == 2
+    
+    def destroy(self, particles_group: pg.sprite.Group):
+        """
+        障害物を破壊し、パーティクルエフェクトを生成
+        """
+        self.is_destroyed = True
+        self.destroy_timer = 0
+        
+        # パーティクルエフェクトを生成
+        for _ in range(20):
+            x = random.randint(self.rect.left, self.rect.right)
+            y = random.randint(self.rect.top, self.rect.bottom)
+            size = random.randint(3, 8)
+            color = (random.randint(100, 200), random.randint(50, 150), random.randint(0, 50))
+            particles_group.add(Particle(x, y, color, size))
+    
+
+class StarItem(pg.sprite.Sprite):
+    """
+    スターアイテム（無敵状態になる）
+    """
+    def __init__(self, obstacles_group: pg.sprite.Group):
+        super().__init__()
+        # スター画像を作成（黄色い星）
+        self.size = 30
+        self.image = pg.Surface((self.size, self.size), pg.SRCALPHA)
+        
+        # 星形を描画
+        points = []
+        for i in range(5):
+            angle = math.pi/2 + i * 2*math.pi/5
+            # 外側の点
+            points.append((self.size/2 + self.size/2 * math.cos(angle), 
+                          self.size/2 + self.size/2 * math.sin(angle)))
+            # 内側の点
+            angle += math.pi/5
+            points.append((self.size/2 + self.size/4 * math.cos(angle), 
+                          self.size/2 + self.size/4 * math.sin(angle)))
+        
+        pg.draw.polygon(self.image, (255, 255, 0), points)
+        
+        self.rect = self.image.get_rect()
+        
+        # 障害物と重ならない位置を探す
+        self.find_valid_position(obstacles_group)
+        
+        self.speed = 8.0  # 固定速度
+        
+    def find_valid_position(self, obstacles_group: pg.sprite.Group):
+        """
+        障害物と重ならない位置を探す
+        """
+        max_attempts = 20  # 最大試行回数
+        for _ in range(max_attempts):
+            # ランダムなX位置を生成
+            x_pos = WIDTH + random.randint(0, 300)
+            
+            # 高さをランダムに設定（地面より上、画面の上半分）
+            y_pos = GROUND_Y - random.randint(50, 200)
+            
+            # 一時的なrectを作成
+            temp_rect = pg.Rect(x_pos, y_pos - self.size, self.size, self.size)
+            
+            # 障害物との衝突チェック
+            collision = False
+            for obstacle in obstacles_group:
+                if temp_rect.colliderect(obstacle.rect):
+                    collision = True
+                    break
+            
+            # 衝突がなければ位置を確定
+            if not collision:
+                self.rect.bottom = y_pos
+                self.rect.left = x_pos
+                return
+        
+        # 最大試行回数に達した場合はデフォルト位置を使用
+        self.rect.bottom = GROUND_Y - 100
+        self.rect.left = WIDTH + random.randint(0, 300)
+
+    def update(self, world_speed: float):
+        # 左方向に進める
         self.rect.x -= world_speed
 
         # 画面外に出たら消す
@@ -225,12 +438,6 @@ class Obstacle(pg.sprite.Sprite):
     def draw(self, surface: pg.Surface):
         surface.blit(self.image, self.rect)
 
-    def is_stompable(self) -> bool:
-        return self.kind in (0, 1)
-
-    def is_platform(self) -> bool:
-        return self.kind == 2
-
 
 class Score:
     def __init__(self, font: pg.font.Font):
@@ -239,15 +446,43 @@ class Score:
         self.color = TEXT_COLOR
         self.pos = (20, 20)
 
+        # 破壊回数関連
+        self.destroy_count = 0  # 現在の破壊回数
+        self.last_destroy_threshold = 0  # 最後に破壊回数を増やしたスコア閾値
+
     def set(self, v: int):
         self.value = v
+
+        # 2000点ごとに破壊回数を増やす
+        if self.value >= self.last_destroy_threshold + 2000:
+            self.destroy_count += 1
+            self.last_destroy_threshold = self.value // 2000 * 2000
 
     def add(self, delta: int):
         self.value += delta
 
+        # 2000点ごとに破壊回数を増やす
+        if self.value >= self.last_destroy_threshold + 2000:
+            self.destroy_count += 1
+            self.last_destroy_threshold = self.value // 2000 * 2000
+
+    def use_destroy(self):
+        """
+        破壊回数を使用
+        """
+        if self.destroy_count > 0:
+            self.destroy_count -= 1
+            return True
+        return False
+
     def draw(self, screen: pg.Surface):
         img = self.font.render(f"SCORE: {self.value}", True, self.color)
         screen.blit(img, self.pos)
+
+        # 破壊回数表示
+        destroy_font = pg.font.SysFont("Meiryo", 20)
+        destroy_text = destroy_font.render(f"2000scoreを超えたら、Shiftを押し、前一つの建物を壊す（回数: {self.destroy_count})", True, (255, 0, 0))
+        screen.blit(destroy_text, (20, 60))
 
 
 def get_support_y(car_rect: pg.Rect, obstacles: pg.sprite.Group) -> int:
@@ -400,6 +635,8 @@ def main():
     # ===== ゲーム状態 =====
     car = Car(car_img, jump_sound)
     obstacles = pg.sprite.Group()
+    stars = pg.sprite.Group()  # スターアイテムグループ
+    particles = pg.sprite.Group()  # パーティクルエフェクトグループ
 
     world_speed = SPEED_START
     floor_scroll_x = 0.0
@@ -416,6 +653,12 @@ def main():
     pg.time.set_timer(SPAWN_EVENT, SPAWN_INTERVAL_MS)
 
     tmr = 0  # デバッグ用カウンタ
+    # スターアイテムを一定間隔で出すためのイベントタイマー
+    STAR_SPAWN_EVENT = pg.USEREVENT + 2
+    pg.time.set_timer(STAR_SPAWN_EVENT, STAR_SPAWN_INTERVAL_MS)
+
+    tmr = 0  # フレームカウンタ
+    tmr = 0  # デバッグ用カウンタ（今は未使用）
 
     # =========================
     # メインループ
@@ -423,6 +666,7 @@ def main():
     while True:
         dt = clock.tick(FPS) / 1000.0
         key_lst = pg.key.get_pressed()
+        current_time = pg.time.get_ticks()
 
         # --- イベント処理 ---
         for event in pg.event.get():
@@ -447,6 +691,13 @@ def main():
                     bonus_group.add(bonus)
 
         # ===== ロジック更新 =====
+            # スターアイテムスポーン（ゲーム中のみ）
+            if event.type == STAR_SPAWN_EVENT and game_active:
+                # 障害物グループを渡して、重ならない位置に生成
+                stars.add(StarItem(obstacles))
+
+        # ===== ロジック更新 =====
+        # --- ロジック更新 ---
         if game_active:
             elapsed_sec = (pg.time.get_ticks() - start_ticks) / 1000.0
 
@@ -461,9 +712,40 @@ def main():
             obstacles.update(world_speed)
             bonus_group.update()
 
+            # スターアイテムの更新
+            stars.update(world_speed)
+
+            # パーティクルの更新
+            particles.update()
+
+            # 次に「いまどこを床にできるか？」を判定してから
+            # その床を使って車を動かす
             # 今フレームの床を決めてから車を物理計算
             car.floor_y = get_support_y(car.rect, obstacles)
-            car.update(key_lst)
+            destroy_flag = car.update(key_lst)
+
+            # 無敵状態の更新
+            car.update_invincible(current_time)
+
+            # 障害物破壊処理
+            if destroy_flag and score_obj.destroy_count > 0:
+                # 最も近い（最も左にある）障害物を探すが、車の右側にあるものだけ対象
+                closest_obstacle = None
+                min_x = WIDTH * 2  # 大きな値で初期化
+                
+                for obs in obstacles:
+                    # 破壊されていない、かつ車の右側にある障害物のみ対象
+                    if (not obs.is_destroyed and 
+                        obs.rect.left > car.rect.right and 
+                        obs.rect.right < min_x):
+                        min_x = obs.rect.right
+                        closest_obstacle = obs
+                
+                # 最も近い障害物を破壊
+                if closest_obstacle:
+                    # 破壊回数を消費して障害物を破壊
+                    if score_obj.use_destroy():
+                        closest_obstacle.destroy(particles)
 
             # 🍄ボーナス取得判定（ライフ+1）
             if pg.sprite.spritecollide(car, bonus_group, True):
@@ -479,6 +761,60 @@ def main():
                     # 上から踏んだかどうかを判定
                     if car.vel_y >= 0 and car.rect.bottom <= obs.rect.top + 20:
                         landed_from_above = True
+            stomped_obstacles = []
+            # 無敵状態でない場合のみ障害物との衝突判定を行う
+            if not car.is_invincible:
+                for obs in obstacles:
+                    if not obs.is_destroyed and car.rect.colliderect(obs.rect):
+
+                        # 「上から踏んだ」とみなす条件:
+                        landed_from_above = (
+                            car.vel_y >= 0 and
+                            car.rect.bottom <= obs.rect.top + 20
+                        )
+
+                        if landed_from_above:
+                            if obs.is_stompable():
+                                # 踏める敵 → 倒す & スコア加算 & バウンド
+                                stomped_obstacles.append(obs)
+                                car.vel_y = BOUNCE_VELOCITY
+                                score_obj.add(STOMP_SCORE)
+
+                            elif obs.is_platform():
+                                # 足場系 → 上に乗った状態を保証
+                                car.floor_y = obs.rect.top
+                                car.rect.bottom = obs.rect.top
+                                car.vel_y = 0.0
+
+                            else:
+                                side_hit = True
+
+            for obs in obstacles:
+                if car.rect.colliderect(obs.rect):
+                    landed_from_above = (
+                        car.vel_y >= 0 and
+                        car.rect.bottom <= obs.rect.top + 20
+                    )
+
+                    if landed_from_above:
+                        if obs.is_stompable():
+                            # 踏める敵：消える＋スコア＋バウンド＋効果音
+                            stomped_obstacles.append(obs)
+                            car.vel_y = BOUNCE_VELOCITY
+                            score_obj.add(STOMP_SCORE)
+                            try:
+                                stomp_sound.play()
+                            except Exception as e:
+                                print("踏みつぶし音エラー:", e)
+
+                        elif obs.is_platform():
+                            # 足場系：上に乗る（ゲームオーバーなし）
+                            car.floor_y = obs.rect.top
+                            car.rect.bottom = obs.rect.top
+                            car.vel_y = 0.0
+                        else:
+                            # 横や下から当たった → ゲームオーバー
+                            side_hit = True
                     else:
                         side_hit = True
                     hit_obs = obs
@@ -522,6 +858,31 @@ def main():
                             print("ゲームオーバー音エラー:", e)
 
             # スコア（時間ベース）も加算
+
+            # 踏んだ敵をまとめて消す
+            for obs in stomped_obstacles:
+                obs.kill()
+
+            # ゲームオーバー処理
+            if side_hit:
+                game_active = False
+                death_time = pg.time.get_ticks()
+
+            # 当たり判定：車 vs スターアイテム
+            for star in pg.sprite.spritecollide(car, stars, True):
+                car.activate_invincible(current_time)
+
+            # ===== スコア更新（時間ベースも反映）=====
+                # BGMをフェードアウトさせる
+                pg.mixer.music.fadeout(1000)
+
+                # ゲームオーバー音を鳴らす
+                try:
+                    gameover_sound.play()
+                except Exception as e:
+                    print("ゲームオーバー音エラー:", e)
+
+            # スコア（時間ベース）もちゃんと反映する
             time_score = int((pg.time.get_ticks() - start_ticks) / 10)
             if score_obj.value < time_score:
                 score_obj.set(time_score)
@@ -548,6 +909,24 @@ def main():
             obs.draw(screen)
 
         # スコア
+        # スターアイテム
+        for star in stars:
+            star.draw(screen)
+            
+        # パーティクルエフェクト
+        particles.draw(screen)
+
+        # スコア
+        score_obj.draw(screen)
+
+        # 無敵状態表示
+        if car.is_invincible:
+            invincible_font = pg.font.SysFont("Meiryo", 24)
+            remaining_time = max(0, STAR_DURATION_MS - (current_time - car.invincible_start_time)) / 1000.0
+            invincible_text = invincible_font.render(f"無敵時間: {remaining_time:.1f}s", True, (255, 255, 0))
+            screen.blit(invincible_text, (WIDTH - 200, 20))
+
+        # ゲームオーバー表示
         score_obj.draw(screen)
 
         # 残機
