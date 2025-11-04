@@ -46,6 +46,8 @@ GAMEOVER_EXIT_DELAY_MS = 5000
 
 # 残機の初期値
 LIFE_INIT = 3
+# ランダムイベントのリスト
+EVENT_LST = ["speed_up", "speed_down"]
 
 # アイテム関係
 STAR_DURATION_MS = 4000       # スター効果持続時間（ミリ秒）
@@ -530,6 +532,48 @@ def get_support_y(car_rect, obstacles):
 
     return support_y
 
+class Event:
+    def __init__(self, font: pg.font.Font):
+        self.addspeed = 1.0
+        self.active = False
+        self.start_time = 0
+        self.end_time = 0
+        self.font = font
+        self.value = ""
+        self.color = TEXT_COLOR
+        self.pos = (WIDTH//2, 20)
+
+    def set(self, event_name: str):
+        self.value = event_name
+
+    def draw(self, screen: pg.Surface):
+        img = self.font.render(f"EVENT: {self.value}", True, self.color)
+        screen.blit(img, self.pos)
+
+    def select(self, event_lst: list):
+        e = event_lst[random.randint(0, len(event_lst)-1)]
+        return e
+    
+    def start(self, event_name: str):
+        if event_name == "speed_up":
+            self.addspeed = 1.5
+            self.end_time = 10000
+        elif event_name == "speed_down":
+            self.addspeed = 0.8
+            self.end_time = 10000
+        else:
+            self.addspeed = 1.0
+            self.end_time = 0
+        
+        self.start_time = pg.time.get_ticks()
+        self.active = True
+        
+    def update(self):
+        # 一定時間経過したらリセット
+        if self.active and pg.time.get_ticks() - self.start_time > self.end_time:
+            self.addspeed = 1.0
+            self.value = ""
+            self.active = False
 
 # =========================
 # ライフ＆ボーナス
@@ -653,6 +697,7 @@ def main():
 
     score_obj = Score(font_small, car, car_img)
     life_obj = Life(font_small, LIFE_INIT)
+    random_event = Event(font_small)
 
     game_active = True
     death_time = None
@@ -668,6 +713,11 @@ def main():
     pg.time.set_timer(STAR_SPAWN_EVENT, STAR_SPAWN_INTERVAL_MS)
 
     tmr = 0
+    # ランダムで発生するイベントのタイマー
+    RANDOM_EVENT = pg.USEREVENT + 2
+    pg.time.set_timer(RANDOM_EVENT, 40000)
+
+    tmr = 0  # デバッグ用カウンタ（今は未使用）
 
     # =========================
     # ループ
@@ -701,10 +751,29 @@ def main():
             if event.type == STAR_SPAWN_EVENT:
                 stars.add(StarItem(obstacles))
 
+            if event.type == RANDOM_EVENT and game_active:
+                event_name = random_event.select(EVENT_LST)
+                random_event.set(event_name)
+                random_event.start(event_name)
+
         # ---- ロジック更新 ----
         if game_active:
             elapsed_sec = (current_time - start_ticks) / 1000.0
             world_speed = SPEED_START + SPEED_ACCEL * elapsed_sec
+            # ランダムイベント
+            if event.type == RANDOM_EVENT and game_active:
+                event_name = random_event.select(EVENT_LST)
+                random_event.set(event_name)
+                random_event.start(event_name)
+
+        # --- ロジック更新 ---
+        if game_active:
+            random_event.update()
+
+            elapsed_sec = (pg.time.get_ticks() - start_ticks) / 1000.0
+
+            # スピードだんだん上がる
+            world_speed = (SPEED_START + SPEED_ACCEL * elapsed_sec) * random_event.addspeed
 
             bg_scroll_x -= world_speed
             floor_scroll_x -= world_speed
@@ -845,6 +914,9 @@ def main():
             screen.blit(inv_text, (WIDTH - 220, 20))
 
         # ゲームオーバー表示
+        #イベント
+        random_event.draw(screen)
+
         if not game_active:
             draw_text(screen, "GAME OVER", font_big,
                       WIDTH // 2 - 200, HEIGHT // 2 - 120)
