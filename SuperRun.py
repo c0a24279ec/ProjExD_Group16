@@ -21,19 +21,17 @@ GROUND_Y = 520
 TEXT_COLOR = (10, 10, 10)
 
 # 床ブロックの色
-BLOCK_MAIN = (180, 120, 40)   # ブロックの茶色い面
-BLOCK_EDGE = (110, 70, 20)    # ブロックのふち色（こげ茶）
-
 BLOCK_COLORS = [
     (180, 120, 40),  # 1. 元の茶色
     (60, 160, 60),   # 2. 緑色
     (150, 50, 50),   # 3. 赤色
     (100, 100, 150), # 4. 青紫色
 ]
+BLOCK_EDGE_DEFAULT = (110, 70, 20)
 
-# 現在の色を管理する変数（プログラム全体で共有）
+# 現在の床色
 current_block_main_color = BLOCK_COLORS[0]
-current_block_edge_color = (110, 70, 20)
+current_block_edge_color = BLOCK_EDGE_DEFAULT
 current_color_index = 0
 
 # 物理系
@@ -52,12 +50,14 @@ SPEED_ACCEL = 0.05            # 時間がたつと速くなる係数（どんど
 
 # スコア系
 STOMP_SCORE = 100             # 踏みつぶし時に入るスコア
+GOAL_SCORE = 30000            # ゴールスコア
 
-# ゲームオーバー後に自動終了するまでの待ち時間（ミリ秒）
+# ゲームオーバー/クリア後に自動終了するまでの待ち時間（ミリ秒）
 GAMEOVER_EXIT_DELAY_MS = 5000
 
 # 残機の初期値
 LIFE_INIT = 3
+
 # ランダムイベントのリスト
 EVENT_LST = ["speed_up", "speed_down"]
 
@@ -103,32 +103,22 @@ def draw_floor_tiles(surface, scroll_x):
     - GROUND_Y から下をブロックで埋める
     - 横方向はスクロールして流れてるように見せる
     """
+    global current_block_main_color, current_block_edge_color
+
     tile = 40  # ブロック1個のサイズ（正方形）
 
     # スクロール量をタイル単位でループさせる
     start_x = int(scroll_x) % tile
     start_x -= tile
 
-    # GROUND_Y から下を全部タイルで埋める
+    # GROUND_Y から下を全部タイルで埋める（現在の色で描画）
     for y in range(GROUND_Y, HEIGHT, tile):
         for x in range(start_x, WIDTH + tile, tile):
             rect = pg.Rect(x, y, tile, tile)
-            pg.draw.rect(surface, BLOCK_MAIN, rect, border_radius=4)
-            pg.draw.rect(surface, BLOCK_EDGE, rect, width=3, border_radius=4)
-
-            highlight_rect = pg.Rect(x + 4, y + 4, tile - 8, tile - 24)
-            pg.draw.rect(surface, (220, 180, 80), highlight_rect, border_radius=4)
-
-    for y in range(GROUND_Y, HEIGHT, tile):
-        for x in range(start_x, WIDTH + tile, tile):
-            rect = pg.Rect(x, y, tile, tile)
-            
-            global current_block_main_color, current_block_edge_color
-            
             pg.draw.rect(surface, current_block_main_color, rect, border_radius=4)
             pg.draw.rect(surface, current_block_edge_color, rect, width=3, border_radius=4)
 
-            highlight_rect = pg.Rect(x+4, y+4, tile-8, tile-24)
+            highlight_rect = pg.Rect(x + 4, y + 4, tile - 8, tile - 24)
             pg.draw.rect(surface, (220, 180, 80), highlight_rect, border_radius=4)
 
 
@@ -556,7 +546,9 @@ def get_support_y(car_rect, obstacles):
 
     return support_y
 
+
 class Event:
+    """ランダム速度イベント"""
     def __init__(self, font: pg.font.Font):
         self.addspeed = 1.0
         self.active = False
@@ -565,7 +557,7 @@ class Event:
         self.font = font
         self.value = ""
         self.color = TEXT_COLOR
-        self.pos = (WIDTH//2, 20)
+        self.pos = (WIDTH // 2 - 80, 20)
 
     def set(self, event_name: str):
         self.value = event_name
@@ -575,9 +567,9 @@ class Event:
         screen.blit(img, self.pos)
 
     def select(self, event_lst: list):
-        e = event_lst[random.randint(0, len(event_lst)-1)]
+        e = event_lst[random.randint(0, len(event_lst) - 1)]
         return e
-    
+
     def start(self, event_name: str):
         if event_name == "speed_up":
             self.addspeed = 1.5
@@ -588,16 +580,17 @@ class Event:
         else:
             self.addspeed = 1.0
             self.end_time = 0
-        
+
         self.start_time = pg.time.get_ticks()
         self.active = True
-        
+
     def update(self):
         # 一定時間経過したらリセット
         if self.active and pg.time.get_ticks() - self.start_time > self.end_time:
             self.addspeed = 1.0
             self.value = ""
             self.active = False
+
 
 # =========================
 # ライフ＆ボーナス
@@ -724,24 +717,24 @@ def main():
     random_event = Event(font_small)
 
     game_active = True
-    death_time = None
+    game_clear = False
+    end_time = None
 
     # イベントID
     SPAWN_EVENT = pg.USEREVENT + 1
     BONUS_EVENT = pg.USEREVENT + 2
     STAR_SPAWN_EVENT = pg.USEREVENT + 3
+    RANDOM_EVENT = pg.USEREVENT + 4  # ランダムイベント
 
     # タイマー設定
     pg.time.set_timer(SPAWN_EVENT, SPAWN_INTERVAL_MS)
     pg.time.set_timer(BONUS_EVENT, 1000)  # 1秒ごとに🍄チャンス
     pg.time.set_timer(STAR_SPAWN_EVENT, STAR_SPAWN_INTERVAL_MS)
-
-    tmr = 0
-    # ランダムで発生するイベントのタイマー
-    RANDOM_EVENT = pg.USEREVENT + 4
-    pg.time.set_timer(RANDOM_EVENT, 40000)
+    pg.time.set_timer(RANDOM_EVENT, 40000)  # 40秒ごとにランダムイベント
 
     tmr = 0  # デバッグ用カウンタ（今は未使用）
+
+    global current_color_index, current_block_main_color, current_block_edge_color
 
     # =========================
     # ループ
@@ -761,20 +754,17 @@ def main():
                 if event.key == pg.K_ESCAPE:
                     pg.quit()
                     sys.exit()
-                
+
+                # 床の色変更：Mキー
                 if event.key == pg.K_m and game_active:
-                    global current_color_index, current_block_main_color
-                
-                    # インデックスを更新
                     current_color_index = (current_color_index + 1) % len(BLOCK_COLORS)
-                
-                    # 現在の色を新しい色に更新
                     current_block_main_color = BLOCK_COLORS[current_color_index]
+                    current_block_edge_color = BLOCK_EDGE_DEFAULT
 
             if not game_active:
                 continue
 
-            if event.type == SPAWN_EVENT and game_active:
+            if event.type == SPAWN_EVENT:
                 obstacles.add(Obstacle(obstacle_image_list, world_speed))
 
             if event.type == BONUS_EVENT:
@@ -785,23 +775,19 @@ def main():
             if event.type == STAR_SPAWN_EVENT:
                 stars.add(StarItem(obstacles))
 
-            if event.type == RANDOM_EVENT and game_active:
+            if event.type == RANDOM_EVENT:
                 event_name = random_event.select(EVENT_LST)
                 random_event.set(event_name)
                 random_event.start(event_name)
 
-        # ---- ロジック更新 ----
-        if game_active:
-            elapsed_sec = (current_time - start_ticks) / 1000.0
-            world_speed = SPEED_START + SPEED_ACCEL * elapsed_sec
-
         # --- ロジック更新 ---
         if game_active:
+            # ランダムイベントの効果更新
             random_event.update()
 
-            elapsed_sec = (pg.time.get_ticks() - start_ticks) / 1000.0
+            elapsed_sec = (current_time - start_ticks) / 1000.0
 
-            # スピードだんだん上がる
+            # スピードだんだん上がる + イベント補正
             world_speed = (SPEED_START + SPEED_ACCEL * elapsed_sec) * random_event.addspeed
 
             bg_scroll_x -= world_speed
@@ -869,7 +855,6 @@ def main():
                         car.rect.bottom = obs.rect.top
                         car.vel_y = 0.0
                     else:
-                        # 特殊タイプが増えたとき用
                         if not car.is_invincible:
                             side_hit = True
                 else:
@@ -885,7 +870,8 @@ def main():
                     life_obj.decrease()
                     if life_obj.is_dead():
                         game_active = False
-                        death_time = current_time
+                        game_clear = False
+                        end_time = current_time
                         pg.mixer.music.fadeout(1000)
                         if gameover_sound is not None:
                             try:
@@ -903,9 +889,16 @@ def main():
             score_obj.check_for_friends()
             score_obj.update_friends(key_lst)
 
+            # ★ ゴール判定 ★
+            if (not game_clear) and score_obj.value >= GOAL_SCORE:
+                game_active = False
+                game_clear = True
+                end_time = current_time
+                pg.mixer.music.fadeout(1000)  # 好みで変えてOK
+
         else:
-            # ゲームオーバー後 5秒で終了
-            if death_time is not None and current_time - death_time >= GAMEOVER_EXIT_DELAY_MS:
+            # ゲームオーバー/クリア後 5秒で終了
+            if end_time is not None and current_time - end_time >= GAMEOVER_EXIT_DELAY_MS:
                 pg.quit()
                 sys.exit()
 
@@ -942,39 +935,61 @@ def main():
             )
             screen.blit(inv_text, (WIDTH - 220, 20))
 
-        # ゲームオーバー表示
-        #イベント
+        # イベント名表示
         random_event.draw(screen)
 
+        # ゲームオーバー / ゴール表示
         if not game_active:
-            draw_text(screen, "GAME OVER", font_big,
-                      WIDTH // 2 - 200, HEIGHT // 2 - 120)
-
-            if death_time is not None:
-                survival_sec = (death_time - start_ticks) / 1000.0
+            if game_clear:
+                # ゴールしたとき
+                draw_text(screen, "GOAL!!", font_big,
+                          WIDTH // 2 - 130, HEIGHT // 2 - 120)
+                if end_time is not None:
+                    survival_sec = (end_time - start_ticks) / 1000.0
+                    draw_text(screen,
+                              f"Time: {survival_sec:.2f} s",
+                              font_small,
+                              WIDTH // 2 - 90,
+                              HEIGHT // 2 - 50)
                 draw_text(screen,
-                          f"Time: {survival_sec:.2f} s",
+                          "クリア！おつかれさま！",
                           font_small,
-                          WIDTH // 2 - 90,
-                          HEIGHT // 2 - 50)
+                          WIDTH // 2 - 130,
+                          HEIGHT // 2 + 10)
+                draw_text(screen,
+                          "5秒後に終了します / ESCで即終了",
+                          font_small,
+                          WIDTH // 2 - 200,
+                          HEIGHT // 2 + 50)
+            else:
+                # ゲームオーバー
+                draw_text(screen, "GAME OVER", font_big,
+                          WIDTH // 2 - 200, HEIGHT // 2 - 120)
 
-            draw_text(screen,
-                      "5秒後に終了します",
-                      font_small,
-                      WIDTH // 2 - 120,
-                      HEIGHT // 2 + 10)
+                if end_time is not None:
+                    survival_sec = (end_time - start_ticks) / 1000.0
+                    draw_text(screen,
+                              f"Time: {survival_sec:.2f} s",
+                              font_small,
+                              WIDTH // 2 - 90,
+                              HEIGHT // 2 - 50)
 
-            draw_text(screen,
-                      "ESCで今すぐ終了",
-                      font_small,
-                      WIDTH // 2 - 110,
-                      HEIGHT // 2 + 50)
+                draw_text(screen,
+                          "5秒後に終了します",
+                          font_small,
+                          WIDTH // 2 - 120,
+                          HEIGHT // 2 + 10)
+
+                draw_text(screen,
+                          "ESCで今すぐ終了",
+                          font_small,
+                          WIDTH // 2 - 110,
+                          HEIGHT // 2 + 50)
 
         pg.display.update()
-
-        
         tmr += 1
 
 
 if __name__ == "__main__":
     main()
+
