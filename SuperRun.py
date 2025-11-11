@@ -50,7 +50,7 @@ SPEED_ACCEL = 0.05            # 時間がたつと速くなる係数（どんど
 
 # スコア系
 STOMP_SCORE = 100             # 踏みつぶし時に入るスコア
-GOAL_SCORE = 30000            # ゴールスコア
+GOAL_SCORE = 300           # ゴールスコア
 
 # ゲームオーバー/クリア後に自動終了するまでの待ち時間（ミリ秒）
 GAMEOVER_EXIT_DELAY_MS = 5000
@@ -253,6 +253,30 @@ class Car(pg.sprite.Sprite):
     def draw(self, surface):
         if self.should_draw():
             surface.blit(self.image, self.rect)
+
+# =========================
+# ゴール旗クラス（画像）
+# =========================
+class Goal(pg.sprite.Sprite):
+    """旗画像のゴール。プレイヤーが触れるとクリア。"""
+    def __init__(self, x, y):
+        super().__init__()
+        # 旗画像を読み込み
+        img = pg.image.load("fig/goal.jpg").convert_alpha()
+
+        # 好きな大きさに調整（高さ120pxに合わせる例）
+        FLAG_H = 120
+        aspect = img.get_width() / img.get_height()
+        FLAG_W = int(FLAG_H * aspect)
+        self.image = pg.transform.smoothscale(img, (FLAG_W, FLAG_H))
+
+        self.rect = self.image.get_rect(midbottom=(x, y))
+
+    def update(self, world_speed):
+        # 画面に合わせて左に流れる
+        self.rect.x -= world_speed
+        if self.rect.right < 0:
+            self.kill()
 
 
 # =========================
@@ -706,6 +730,9 @@ def main():
     bonus_group = pg.sprite.Group()
     stars = pg.sprite.Group()
     particles = pg.sprite.Group()
+    goal_group = pg.sprite.Group()
+    goal = None
+
 
     world_speed = SPEED_START
     floor_scroll_x = 0.0
@@ -889,12 +916,23 @@ def main():
             score_obj.check_for_friends()
             score_obj.update_friends(key_lst)
 
-            # ★ ゴール判定 ★
-            if (not game_clear) and score_obj.value >= GOAL_SCORE:
+            # ★ ゴール旗の出現＆判定 ★
+            # スコアがGOAL_SCOREになったら、右側に旗を出す
+            if goal is None and score_obj.value >= GOAL_SCORE:
+                goal = Goal(WIDTH + 150, GROUND_Y)
+                goal_group.add(goal)
+
+            # ゴール旗の移動
+            goal_group.update(world_speed)
+
+            # プレイヤーのX座標が、旗のX座標を超えたらクリア扱い
+            if goal and car.rect.centerx >= goal.rect.centerx:
                 game_active = False
                 game_clear = True
                 end_time = current_time
-                pg.mixer.music.fadeout(1000)  # 好みで変えてOK
+                pg.mixer.music.fadeout(1000)
+
+           
 
         else:
             # ゲームオーバー/クリア後 5秒で終了
@@ -918,6 +956,10 @@ def main():
         # 障害物
         for obs in obstacles:
             obs.draw(screen)
+        
+        # ゴール旗
+        goal_group.draw(screen)
+
 
         # スコア＆ライフ
         score_obj.draw(screen)
