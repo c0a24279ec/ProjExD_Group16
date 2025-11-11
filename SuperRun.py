@@ -50,7 +50,7 @@ SPEED_ACCEL = 0.05            # 時間がたつと速くなる係数（どんど
 
 # スコア系
 STOMP_SCORE = 100             # 踏みつぶし時に入るスコア
-GOAL_SCORE = 300           # ゴールスコア
+GOAL_SCORE = 30000           # ゴールスコア
 
 # ゲームオーバー/クリア後に自動終了するまでの待ち時間（ミリ秒）
 GAMEOVER_EXIT_DELAY_MS = 5000
